@@ -4,15 +4,13 @@
     <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ค่าปรับนอก KPI 2025</title>
-    
-    <!-- CSS -->
+    <title>รายละเอียดค่าปรับนอก KPI'2025</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
 
-    <!-- Required Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
@@ -23,6 +21,19 @@
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
 
     <style>
+        #sumKpiTableContainer {
+            overflow-y: visible;
+            max-height: none;
+            display: flex;
+        }
+        #sumKpiTable {
+            flex: 1;
+        }
+        #graphContainer {
+            flex: 0 0 600px;
+            margin-left: 50px;
+            margin-top: 50px;
+        }
         .table-responsive {
             overflow-x: auto;
             max-width: 100%;
@@ -30,7 +41,6 @@
         }
         th, td {
             white-space: nowrap;
-            min-width: 100px;
         }
         .loading {
             position: fixed;
@@ -77,11 +87,37 @@
         .dataTables_wrapper .dataTables_filter {
             margin-bottom: 10px;
         }
+        #sumKpiTitle {
+            background-color: #E0E0E0; /* สีเทาตามรูป */
+            color: black; /* สีดำตามรูป */
+            padding: 10px;
+            text-align: left;
+            font-size: 1.5em;
+            margin-bottom: 10px; /* เพิ่มระยะห่างระหว่างหัวข้อและตาราง */
+            display: block; /* แสดงหัวข้อในบล็อกของตัวเอง */
+        }
     </style>
 </head>
 <body class="container-fluid p-4">
     <div id="datetime"></div>
-    <h2 class="mb-4 text-center">ค่าปรับนอก KPI 2025</h2>
+    <div id="sumKpiTableContainer" class="table-responsive">
+        <div style="display: flex; flex-direction: column;">
+            <div id="sumKpiTitle">
+                ตารางสรุปค่าปรับนอก KPI'2025 by Provider
+            </div>
+            <table id="sumKpiTable" class="table table-striped table-bordered" style="display: none; width: 100%">
+                <thead>
+                    <tr id="sumKpiHeaderRow"></tr>
+                </thead>
+                <tbody id="sumKpiTableBody"></tbody>
+            </table>
+        </div>
+        <div id="graphContainer">
+            <iframe width="600" height="481" seamless frameborder="0" scrolling="no" src="https://docs.google.com/spreadsheets/d/e/2PACX-1vRPHrQpbaMz361jOS1D41HRZzE_DNt3YZ7_akkBjAmaVsBJ0RQI3Jw3nPEo-ySkX_fdk95LloJqDCrk/pubchart?oid=1184513975&amp;format=interactive"></iframe>
+        </div>
+    </div>
+
+    <h2 class="mb-4 text-center">รายละเอียดค่าปรับนอก KPI'2025</h2>
     <div id="loading" class="loading">กำลังโหลดข้อมูล...</div>
 
     <div class="action-buttons">
@@ -106,6 +142,8 @@
         const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2THX4NX-UftdTl401jr4f0oGU_IUUV6PIyDuI1ce4gcmk4j11XifsClyEwHhDZVoFmOy4OMzaJjMQ/pub?gid=0&single=true&output=csv';
         const SELECTED_COLUMNS = [1,3,4,5,6,7,8,10,11,13,14,15,16,18,19,20,21,22,23,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48];
         let dataTable = null;
+        let sumKpiDataTable = null;
+        const SUM_KPI_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRPHrQpbaMz361jOS1D41HRZzE_DNt3YZ7_akkBjAmaVsBJ0RQI3Jw3nPEo-ySkX_fdk95LloJqDCrk/pub?gid=1286127342&single=true&output=csv';
 
         function updateDateTime() {
             const now = new Date();
@@ -117,13 +155,14 @@
             document.getElementById('datetime').textContent = thaiDateTimeFormat.format(now);
         }
 
-        async function fetchData() {
+        async function fetchData(url, selectedColumns = null, filterCondition = null) {
             try {
-                const response = await fetch(SHEET_URL);
-                if (!response.ok) throw new Error('Network response was not ok');
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok: ${response.status}`);
+                }
                 const text = await response.text();
 
-                // Improved CSV parsing
                 let rows = [];
                 let insideQuotes = false;
                 let currentRow = [];
@@ -138,7 +177,7 @@
                         currentCell = '';
                     } else if ((char === '\n' || char === '\r') && !insideQuotes) {
                         if (char === '\r' && text[i + 1] === '\n') {
-                            i++; // Skip \n if \r\n
+                            i++;
                         }
                         if (currentCell) {
                             currentRow.push(currentCell.trim());
@@ -153,7 +192,6 @@
                     }
                 }
 
-                // Handle last row
                 if (currentCell || currentRow.length > 0) {
                     if (currentCell) {
                         currentRow.push(currentCell.trim());
@@ -163,20 +201,18 @@
                     }
                 }
 
-                // Filter and select columns
-                const filteredRows = rows.filter((row, index) => 
-                    index === 0 || (row[3] && row[3].includes('2025'))
-                );
+                if (filterCondition) {
+                    rows = rows.filter(filterCondition);
+                }
 
-                return filteredRows.map(row => 
-                    SELECTED_COLUMNS.map(colIndex => 
-                        row[colIndex] ? row[colIndex].replace(/^"|"$/g, '').trim() : ''
-                    )
-                );
+                if (selectedColumns) {
+                    return rows.map(row => selectedColumns.map(colIndex => row[colIndex] ? row[colIndex].replace(/^"|"$/g, '').trim() : ''));
+                }
 
+                return rows;
             } catch (error) {
                 console.error('Error:', error);
-                document.getElementById('loading').textContent = 'เกิดข้อผิดพลาดในการโหลดข้อมูล';
+                document.getElementById('loading').textContent = `เกิดข้อผิดพลาดในการโหลดข้อมูล: ${error.message}`;
                 return [];
             }
         }
@@ -185,17 +221,16 @@
             const table = $('#dataTable').DataTable();
             const data = table.data().toArray();
             const headers = Array.from(document.querySelectorAll('#headerRow th')).map(th => th.textContent);
-            
+
             const ws_data = [headers, ...data];
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(ws_data);
-            
-            // Set column widths
+
             const colWidths = headers.map(() => ({ wch: 20 }));
             ws['!cols'] = colWidths;
-            
+
             XLSX.utils.book_append_sheet(wb, ws, "ค่าปรับนอกKPI");
-            
+
             const timestamp = new Date().toLocaleDateString('th-TH', {
                 year: 'numeric',
                 month: '2-digit',
@@ -203,80 +238,97 @@
                 hour: '2-digit',
                 minute: '2-digit'
             }).replace(/[/:]/g, '');
-            
+
             XLSX.writeFile(wb, `ค่าปรับนอกKPI_${timestamp}.xlsx`);
         }
 
-        function populateTable(data) {
+        function populateTable(data, tableId, headerId, bodyId, dataTableInstance) {
             if (!data || data.length === 0) {
                 document.getElementById('loading').textContent = 'ไม่พบข้อมูล';
                 return;
             }
 
-            const headerRow = document.getElementById('headerRow');
-            const tableBody = document.getElementById('tableBody');
-            const table = document.getElementById('dataTable');
+            const headerRow = document.getElementById(headerId);
+            const tableBody = document.getElementById(bodyId);
+            const table = document.getElementById(tableId);
 
-            // Clear existing content
             headerRow.innerHTML = '';
             tableBody.innerHTML = '';
 
-            // Add headers
-            headerRow.innerHTML = data[0].map(header => 
-                `<th>${header || ''}</th>`
-            ).join('');
+            headerRow.innerHTML = data[0].map(header => `<th>${header || ''}</th>`).join('');
+            tableBody.innerHTML = data.slice(1).map(row => `<tr>${row.map(cell => `<td>${cell || ''}</td>`).join('')}</tr>`).join('');
 
-            // Add body rows
-            tableBody.innerHTML = data.slice(1).map(row => 
-                `<tr>${row.map(cell => `<td>${cell || ''}</td>`).join('')}</tr>`
-            ).join('');
-
-            // Hide loading and show table
             document.getElementById('loading').style.display = 'none';
             table.style.display = 'table';
 
-            // Initialize DataTable
-            if (dataTable) {
-                dataTable.destroy();
+            if (dataTableInstance) {
+                dataTableInstance.destroy();
             }
 
-            dataTable = $('#dataTable').DataTable({
-                scrollX: true,
-                scrollY: '75vh',
-                scrollCollapse: true,
-                ordering: true,
-                searching: true,
-                pageLength: 25,
-                language: {
-                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/th.json'
-                },
-                dom: '<"top"lf>rt<"bottom"ip><"clear">',
-                initComplete: function() {
-                    this.api().columns().every(function() {
-                        var column = this;
-                        var header = $(column.header());
-                        header.addClass('text-nowrap');
-                    });
-                }
-            });
+            if (tableId === 'dataTable') {
+                return $('#' + tableId).DataTable({
+                    scrollCollapse: false,
+                    ordering: false,
+                    language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/th.json' },
+                    dom: 'lfrtip',
+                    initComplete: function() {
+                        this.api().columns().every(function() {
+                            $(this.header()).addClass('text-nowrap');
+                        });
+                    }
+                });
+            } else {
+                return $('#' + tableId).DataTable({
+                    scrollX: false,
+                    scrollCollapse: false,
+                    ordering: false,
+                    searching: false,
+                    paging: false,
+                    info: false,
+                    language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/th.json' },
+                    dom: 'rt',
+                    columnDefs: [
+                        {
+                            targets: '_all',
+                            createdCell: function (td, cellData, rowData, row, col) {
+                                $(td).css('width', 'auto');
+                                $(td).css('min-width', '100px');
+                                $(td).css('overflow', 'hidden');
+                                $(td).css('text-overflow', 'ellipsis');
+                            }
+                        }
+                    ],
+                    initComplete: function() {
+                        this.api().columns().every(function() {
+                            $(this.header()).addClass('text-nowrap');
+                        });
+                    }
+                });
+            }
         }
 
         function refreshData() {
             document.getElementById('loading').style.display = 'block';
             document.getElementById('dataTable').style.display = 'none';
-            fetchData().then(data => populateTable(data));
+            document.getElementById('sumKpiTable').style.display = 'none';
+
+            Promise.all([
+                fetchData(SHEET_URL, SELECTED_COLUMNS, (row, index) => index === 0 || (row[3] && row[3].includes('2025'))),
+                fetchData(SUM_KPI_SHEET_URL, null, (row, index) => index >= 1 && index <= 17)
+            ]).then(([data1, data2]) => {
+                sumKpiDataTable = populateTable(data2, 'sumKpiTable', 'sumKpiHeaderRow', 'sumKpiTableBody', sumKpiDataTable);
+                dataTable = populateTable(data1, 'dataTable', 'headerRow', 'tableBody', dataTable);
+            });
         }
 
-        // Initialize everything when document is ready
         document.addEventListener('DOMContentLoaded', async () => {
             updateDateTime();
             setInterval(updateDateTime, 1000);
-            
+
             document.getElementById('refreshBtn').addEventListener('click', refreshData);
             document.getElementById('downloadBtn').addEventListener('click', downloadExcel);
-            
-            const data = await fetchData();
-            populateTable(data);
+
+            refreshData();
         });
     </script>
 </body>
